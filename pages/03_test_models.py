@@ -22,21 +22,24 @@ def check_api(port):
     url = f"{API_URL}:{port}/"  # Substitua pela URL da rota base da sua API
     try:
         response = requests.get(url)
+        # st.write(response.json())
         if response.status_code == 200:
-            return True, response.json()["model"]
+            return True, response.json()
         else:
-            return False, None
-    except requests.ConnectionError:
-        return False, None
+            # st.toast(f"Non-200 status code recived: {response.status_code}")
+            return False, {}
+    except requests.ConnectionError as e:
+        # st.toast(f"Connection error: {e}")
+        return False, {}
     
 def scan_running_apis():
     result_dict = {}
-    for port in range(5000, 5999):
+    for port in range(5000, 5010):
         test, res = check_api(port)
-        if test:
-            model_name = res  # Assumindo que `res` contém o nome do modelo
-            result_dict[model_name] = port
-
+        # st.write(res)
+        if res:
+            model_name = res["model"]  # Assumindo que `res` contém o nome do modelo
+            result_dict[model_name] = port 
     return result_dict
 
 def generate_new_param(features):
@@ -76,6 +79,7 @@ def get_data(filename) -> pd.DataFrame:
 # Busca os dados historicos de consultas na api
 historical_data_df = get_data(HISTORICAL_DATA)
 
+
 # Busca as apis que estão em execução
 running_apis = scan_running_apis()
 st.write("Running Apis")
@@ -89,7 +93,7 @@ model_names = list(running_apis)
 st.markdown("# Teste dos modelos")
 
 # Buscas as features (Pensar numa forma melhor isso aqui)
-response = requests.get(f"{API_URL}:5002/get_fetures")
+response = requests.get(f"{API_URL}:5000/get_fetures")
 features = response.json()
 # st.write(features)
 
@@ -103,7 +107,7 @@ def test_model(model_name):
     all_results = historical_data_df # Copia os dados historicos
     max_lenght = 0 if all_results.shape[0] == 0 else all_results.iloc[-1]["time"] + 1 # Pega o maior tempo dentro do dataset
     model_acc_mean_df = pd.DataFrame(columns=["time", "mean"]) # Dataframe para gerar os valores médios do modelo selecionado
-
+    df_2 = pd.DataFrame()
     # Loop para realizar consultas nos modelos
     for seconds in range(0,2000):
         with placeholder_data_visualization.container():
@@ -136,6 +140,9 @@ def test_model(model_name):
             model_acc_mean_df = pd.concat([model_acc_mean_df, pd.DataFrame([{"time": elapsed_time, "mean":model_acc_mean}])], ignore_index=True)
             
             
+            df_2 = pd.concat([df_2,pd.DataFrame([{"status":filtered_info['response'],"acertos":filtered_info['acc']}])],ignore_index=True)
+            df_3 = df_2.groupby(by=["status"]).size().reset_index(name="counts")
+
             # ============================================================================
             # Exibe o nome do modelo, acuracia e resultado da predição
             # ============================================================================
@@ -185,7 +192,7 @@ def test_model(model_name):
             # ============================================================================
             # Exibe a variação dos acertos para todos os modelos
             # ============================================================================
-            st.markdown("### Precisão dos modelos")
+            st.markdown("### Precisão da classificação dos modelos")
             
             fig_acc_models_line, fig_acc_models_dots = st.columns(2)
             with fig_acc_models_line:
@@ -213,6 +220,21 @@ def test_model(model_name):
                 )
                 st.write(fig2)
             
+            # ============================================================================
+            # Exibe a média de arcertos
+            # ============================================================================
+
+            fig_a, fig_b = st.columns(2)
+            with fig_a:
+                st.markdown("### Porcentagem da classificação entre os targets")
+                fig3 = px.pie(data_frame = df_2, values="acertos",names="status",color="status")
+                st.write(fig3)
+
+            with fig_b:
+                st.markdown("### Quantitativo por target")
+                fig4 = px.bar(data_frame=df_3, x="status",y="counts", color="status",barmode="group")
+                st.write(fig4)
+
             # st.write(new_data)
             time.sleep(0.1)
 
