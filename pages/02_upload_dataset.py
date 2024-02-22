@@ -6,7 +6,7 @@ st.title("Treinamentos")
 
 st.header("Upload de dataset")
 
-API = "http://localhost:8000"
+API = "https://adaptflow.romulolass.dev/"
 
 
 def check_if_api():

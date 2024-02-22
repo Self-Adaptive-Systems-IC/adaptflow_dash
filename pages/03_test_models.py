@@ -100,7 +100,8 @@ model_names = list(running_apis)
 st.markdown("# Teste dos modelos")
 
 # Buscas as features (Pensar numa forma melhor isso aqui)
-response = requests.get(f"{API_URL}:5000/get_fetures")
+response = requests.get(f"{API_URL}:5000/get_features")
+print(response)
 features = response.json()
 # st.write(features)
 
@@ -298,6 +299,7 @@ with placeholder_form.container():
         st.write("Selecione um modelo")
         # st.markdown(f"**Modelo atual**: {model_name}")
         option = st.selectbox("Modelo", options=(model_names), key="visibility")
+        st.write(option)
         submitted = st.form_submit_button("Submit")
         if submitted:
             historical_data_df.to_csv(HISTORICAL_DATA, index=False)
