@@ -1,12 +1,14 @@
 import streamlit as st
 import requests
+import os
+from base64 import b64decode
 
 st.title("Treinamentos")
 
 
 st.header("Upload de dataset")
 
-API = "https://adaptflow.romulolass.dev/"
+API = "http://192.168.2.131:8000"
 
 
 def check_if_api():
@@ -26,12 +28,25 @@ def check_if_api():
 api_status, api_message = check_if_api()
 
 
+# Function to load base64-encoded pickle file
+def load_base64_pickle(base64_string, filename):
+    """Load a base64-encoded pickle file.
+
+    Args:
+        base64_string (str): Base64-encoded string.
+        filename (str): Location to save the file.
+    """
+    with open(filename, 'wb') as f:
+        f.write(b64decode(base64_string))
+        print(f"file saved on {filename}")
+    
+
 def make_upload():
     uploaded_file = st.file_uploader("Selecione um arquivo")
-
+    result = {}
     if uploaded_file is not None:
         num_models = st.slider("Total de modelos para treinamento", 1, 15, 3)
-        metric = "Accurecy"
+        metric = "Accuracy"
         if st.button("Enviar"):
             file = {"file": (uploaded_file.name, uploaded_file, uploaded_file.type)}
             params = {"n": num_models, "metric": metric}
@@ -42,9 +57,20 @@ def make_upload():
             if response.status_code == 200:
                 st.success("Arquivo enviado com sucesso!!!")
                 st.json(response.json())
+                result = response.json()
             else:
                 st.error("Erro ao enviar o arquivo")
-
+    
+    path = './ml_models/'+uploaded_file.name
+    try:
+        os.mkdir(path)
+        print("Folder %s created!" % path)
+    except FileExistsError:
+        print("Folder %s already exists" % path)
+        
+    for e in result['data']:
+        x = e['pickle']
+        load_base64_pickle(x['data'], f"{path}/{x['name']}")
 
 if not api_status:
     st.markdown(

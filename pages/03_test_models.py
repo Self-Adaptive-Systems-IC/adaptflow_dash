@@ -6,7 +6,8 @@ import os
 import json
 import time
 import plotly.express as px  # interactive charts
-
+import joblib
+import numpy as np
 API_URL = "http://localhost"
 HISTORICAL_DATA = "data_dataset_edit_01.csv"
 
@@ -17,36 +18,27 @@ st.set_page_config(
     layout="wide",
 )
 
-# TODO check if have anny prediction api running
-# TODO Make a away to use the first api to get the features
+# Pasta onde será salvo os arquivos dos modelos
+folder_path = "./ml_models"
 
+# Função para listar pastas dentro de um pasta
+def list_folders(path):
+    return [f.path for f in os.scandir(path) if f.is_dir()]
 
-def check_api(port):
-    url = f"{API_URL}:{port}/"  # Substitua pela URL da rota base da sua API
-    try:
-        response = requests.get(url)
-        # st.write(response.json())
-        if response.status_code == 200:
-            return True, response.json()
-        else:
-            # st.toast(f"Non-200 status code recived: {response.status_code}")
-            return False, {}
-    except requests.ConnectionError as e:
-        # st.toast(f"Connection error: {e}")
-        return False, {}
+# Função para listar os arquivos dentro de uma pasta
+def list_files_in_folder(folder_path):
+    return [f.name for f in os.scandir(folder_path) if f.is_file()]
 
+# Lista de pastas (Cada dataset é salvo em uma pasta)
+folders = list_folders(folder_path)
 
-def scan_running_apis():
-    result_dict = {}
-    for port in range(5000, 5010):
-        test, res = check_api(port)
-        # st.write(res)
-        if res:
-            model_name = res["model"]  # Assumindo que `res` contém o nome do modelo
-            result_dict[model_name] = port
-    return result_dict
+# Seleciona o primeiro dataset para aparecer no menu dropdown
+option_dataset = folders[0]
 
+# Array para armazenar os nomes dos modelos
+model_names = []
 
+# Gera parametros aleatorios para testar os modelos de ML
 def generate_new_param(features):
     params = {}
     for key, value in features.items():
@@ -54,24 +46,22 @@ def generate_new_param(features):
         params[key] = random.uniform(value[0], value[1])
     return params
 
-
-def requests_2_apis(model: str, time: int, data: dict, df):
-    url = f"http://127.0.0.1:{running_apis[model]}/predict"
-    response = requests.post(url, data=json.dumps(data))
-    # response = requests.post(routes[model], data=json.dumps(data))
-    result = response.json()
-    # print(result)
-
-    # b = {"acc": result["prediction"], "model": model}
-
+# Realiza a predição e calcula a porcentagem de acerto
+def predict_models(model, data: dict):
+    numerical_data = np.array(list(data.values())).reshape(1,-1)
+    prediction = model.predict(numerical_data)[0]
+    probabilities = model.predict_proba(numerical_data)[0]
+    score = probabilities[prediction]
+    
     infos = {
-        "model": model,
-        "response": result["prediction"],
-        "acc": result["score"] * 100,
+        "model": model.__class__.__name__,
+        "response": prediction,
+        "acc": score * 100,
     }
+    
     return infos
 
-
+# Carrega o dataset historico
 def get_data(filename) -> pd.DataFrame:
     file_path = "./tmp/historical_data"
     file = f"{file_path}/{filename}"
@@ -87,61 +77,61 @@ def get_data(filename) -> pd.DataFrame:
 historical_data_df = get_data(HISTORICAL_DATA)
 
 
-# Busca as apis que estão em execução
-running_apis = scan_running_apis()
-st.write("Running Apis")
-running_apis_df = pd.DataFrame(list(running_apis.items()), columns=["Modelo", "Porta"])
-st.write(running_apis_df)
-
-# Busca os nomes dos modelos em execução
-model_names = list(running_apis)
-
 # dashboard title
 st.markdown("# Teste dos modelos")
 
 # Buscas as features (Pensar numa forma melhor isso aqui)
-response = requests.get(f"{API_URL}:5000/get_features")
-print(response)
-features = response.json()
+# response = requests.get(f"{API_URL}:5000/get_features")
+# print(response)
+features = {'type_of_failure': (1, 10), 'time_repair': (-0.6304655464, 1.977824924), 'cost': (-0.843, 1.712), 'criticality': (0.0, 0.912), 'humid': (5, 85), 'temp': (24, 150)}
 # st.write(features)
 
 # Define os placeholders necessarios
 placeholder_form = st.empty()
 placeholder_data_visualization = st.empty()
 
-
-def test_model(model_name):
+# Realiza os graficos
+def test_model(actual_model,ml_models):
     # Define as variaveis necessarias para realziar os testes
-    last_acc = 0  # Pegar a acc max antes de inserir novas
-    all_results = historical_data_df  # Copia os dados historicos
+    # Pegar a acc max antes de inserir novas
+    last_acc = 0
+    
+    # Copia os dados historicos
+    all_results = historical_data_df
+    
+    # Pega o maior tempo dentro do dataset
     max_lenght = (
         0 if all_results.shape[0] == 0 else all_results.iloc[-1]["time"] + 1
-    )  # Pega o maior tempo dentro do dataset
+    )
+    
+    # Dataframe para gerar os valores médios do modelo selecionado
     model_acc_mean_df = pd.DataFrame(
         columns=["time", "mean"]
-    )  # Dataframe para gerar os valores médios do modelo selecionado
+    )  
+    
+    # Cria um dataframe vazio
     df_2 = pd.DataFrame()
+    
     # Loop para realizar consultas nos modelos
-    for seconds in range(0, 2000):
+    for seconds in range(0, 10000):
         with placeholder_data_visualization.container():
-            elapsed_time = seconds + max_lenght  # Total de tempo passado
-            new_data = generate_new_param(
-                features
-            )  # Gera um novo conjunto de dados para teste
+            # Total de tempo passado
+            elapsed_time = seconds + max_lenght  
+            
+            # Gera um novo conjunto de dados para teste
+            new_data = generate_new_param(features)  
 
             # Para cada modelo vai realizar a consuta na respectiva api
             info = {}
-            for model in model_names:
-                info[model] = requests_2_apis(
-                    model, elapsed_time, new_data, historical_data_df
-                )
+            for file,model in ml_models:
+                info[file] = predict_models(model, new_data)
 
             # Preenche o dataframe com os resultados obtidos das predições
             historical_data = []
             for model, model_infos in info.items():
                 historical_data.append(
                     {
-                        "model": model,
+                        "model": model_infos['model'],
                         "accuracy": model_infos["acc"],
                         "time": elapsed_time,
                     }
@@ -152,15 +142,19 @@ def test_model(model_name):
             all_results.to_csv(f"./tmp/historical_data/{HISTORICAL_DATA}", index=False)
 
             # Filta os dasos historicos do modelo selecionado
-            filtered_info = info[option]
+            filtered_info = info[option_model]
 
             # Define um dataframe com os valores médios por tempo
+            
+            # Filtra os resultados historicos do modelo
             all_model_op_results = all_results[
-                all_results["model"] == option
-            ]  # Filtra os resultados historicos do modelo
+                all_results["model"] == actual_model
+            ]  
+            
+            # Calcula a média da acuracia do modelo
             model_acc_mean = all_model_op_results[
                 "accuracy"
-            ].mean()  # Calcula a média da acuracia do modelo
+            ].mean()  
 
             model_acc_mean_df = pd.concat(
                 [
@@ -287,21 +281,20 @@ def test_model(model_name):
                     barmode="group",
                 )
                 st.write(fig4)
-
-            # st.write(new_data)
+            
             time.sleep(0.1)
 
-
-model_name = "Ada_Boost_Classifier"
-
 with placeholder_form.container():
-    with st.form("form1"):
-        st.write("Selecione um modelo")
-        # st.markdown(f"**Modelo atual**: {model_name}")
-        option = st.selectbox("Modelo", options=(model_names), key="visibility")
-        st.write(option)
-        submitted = st.form_submit_button("Submit")
-        if submitted:
+    with st.form("select_dataset"):
+        st.write("Selecione um dataset")
+        option_dataset = st.selectbox("Dataset", options=(folders),key="visibility")
+        option_model = st.selectbox("Dataset", options=(list_files_in_folder(option_dataset)))
+        submit_dataset = st.form_submit_button("Selecionar")
+        if submit_dataset:
+            ml_models = [(e,joblib.load(f"{option_dataset}/{e}")) for e in list_files_in_folder(option_dataset)]
             historical_data_df.to_csv(HISTORICAL_DATA, index=False)
-            model_name = option
-            test_model(model_name)
+            actual_model = ''
+            for item in ml_models:
+                if item[0] == option_model:
+                    actual_model = item[1].__class__.__name__
+            test_model(actual_model,ml_models)
